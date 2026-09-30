@@ -24,6 +24,8 @@ Confuser.CLI.exe my-project.crproj
 
 See the [Getting Started Guide](docs/getting-started.md) for walkthroughs and configuration.
 
+or if you want the latest work, fork the develop branch. (experimental)
+
 ## Documentation
 
 | | |
