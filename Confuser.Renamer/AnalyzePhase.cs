@@ -76,6 +76,7 @@ namespace Confuser.Renamer {
 			bool caliburn = false;
 			bool winforms = false;
 			bool json = false;
+			bool systemTextJson = false;
 			bool visualBasic = false;
 			bool vsComposition = false;
 
@@ -93,6 +94,9 @@ namespace Confuser.Renamer {
 					}
 					else if (asmRef.Name == "Newtonsoft.Json") {
 						json = true;
+					}
+					else if (asmRef.Name == "System.Text.Json") {
+						systemTextJson = true;
 					}
 					else if (asmRef.Name == "Microsoft.VisualStudio.Composition") {
 						vsComposition = true;
@@ -125,6 +129,12 @@ namespace Confuser.Renamer {
 				var jsonAnalyzer = new JsonAnalyzer();
 				context.Logger.LogDebug("Newtonsoft.Json found, enabling compatibility.");
 				service.Renamers.Add(jsonAnalyzer);
+			}
+
+			if (systemTextJson) {
+				var systemTextJsonAnalyzer = new SystemTextJsonAnalyzer();
+				context.Logger.LogDebug("System.Text.Json found, enabling compatibility.");
+				service.Renamers.Add(systemTextJsonAnalyzer);
 			}
 
 			if (visualBasic) {

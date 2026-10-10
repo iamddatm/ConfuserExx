@@ -46,6 +46,28 @@ namespace SystemTextJsonRenaming.Test {
 						"{\"DeploymentKey\":\"abc\",\"Count\":7}",
 						"{\"OrderNumber\":\"SN-1\",\"Amount\":5}",
 						"SN-2/3",
+						"3/SN-3",
+						"END"
+					});
+					return Task.CompletedTask;
+				});
+
+		// 自动检测:能从 JsonSerializer 调用点认出被序列化的类型,连参数都不用配。
+		[Fact]
+		[Trait("Category", "Protection")]
+		[Trait("Protection", "rename")]
+		public Task AutoDetectionKeepsSerializedMembers() =>
+			Run(App, null,
+				new SettingItem<Protection>("rename"),
+				outputDirSuffix: "-stj-auto",
+				checkOutput: false,
+				postProcessAction: outputPath => {
+					AssertAppOutput(outputPath, "--record", new[] {
+						"START",
+						"{\"DeploymentKey\":\"abc\",\"Count\":7}",
+						"{\"OrderNumber\":\"SN-1\",\"Amount\":5}",
+						"SN-2/3",
+						"3/SN-3",
 						"END"
 					});
 					return Task.CompletedTask;
