@@ -273,6 +273,11 @@ namespace Confuser.Renamer {
 			else if (parameters.GetParameter(context, property, "forceRen", false))
 				return;
 
+			// renProperties=false 保留属性名。按成员名匹配、又没有特性把名字钉死的序列化器
+			//(如不带 [JsonPropertyName] 的 System.Text.Json)一旦属性被改名,就会静默读写默认值。
+			else if (!parameters.GetParameter(context, property, "renProperties", true))
+				service.SetCanRename(property, false);
+
 			else if (property.DeclaringType.Implements("System.ComponentModel.INotifyPropertyChanged"))
 				service.SetCanRename(property, false);
 

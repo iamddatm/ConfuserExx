@@ -213,12 +213,26 @@ Renames types, methods, fields, properties, and events to meaningless identifier
 | `forceRen` | `true`, `false` | `false` | Rename even when the Reflection API is used. |
 | `renXaml` | `true`, `false` | `true` | Rename XAML/BAML references (WPF support). |
 | `renEnum` | `true`, `false` | `false` | Rename enum members. |
+| `renPublic` | `true`, `false` | — | Rename public members of types visible outside the assembly. Unset means types of an application are renamed freely. |
+| `renProperties` | `true`, `false` | `true` | Rename properties. Set to `false` when a serializer matches members by name without an attribute to pin it — System.Text.Json without `[JsonPropertyName]`, for example. |
+| `renameArgs` | `true`, `false` | `true` | Blank the parameter names of methods and constructors. Set to `false` when a serializer binds constructor parameters by name (positional records with System.Text.Json). |
 | `password` | string | — | Password for `reversible` mode decoding. |
 
 Serialization attributes that are automatically respected:
 - `[DataContract]` / `[DataMember]`
 - `[JsonProperty]` (Newtonsoft.Json)
 - `[Serializable]`
+
+`System.Text.Json` serializes members by name but offers no attribute-free way to discover that a
+type is serialized, so it is not detected automatically. Obfuscate such assemblies with
+`renProperties=false` (and `renameArgs=false` for records with constructor parameters):
+
+```xml
+<protection id="rename">
+  <argument name="renProperties" value="false" />
+  <argument name="renameArgs" value="false" />
+</protection>
+```
 
 ```xml
 <protection id="rename">
