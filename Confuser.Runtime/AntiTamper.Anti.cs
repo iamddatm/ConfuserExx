@@ -27,6 +27,7 @@ namespace Confuser.Runtime {
 			uint l = 0;
 			var r = (uint*)(p + 0x18 + o);
 			uint z = (uint)Mutation.KeyI1, x = (uint)Mutation.KeyI2, c = (uint)Mutation.KeyI3, v = (uint)Mutation.KeyI4;
+			uint fb = (uint)Mutation.KeyI5;
 
 			CheckRemoteDebuggerPresent(Process.GetCurrentProcess().Handle, ref isDebuggerPresent);
 			if (isDebuggerPresent) Environment.FailFast(null);
@@ -60,14 +61,14 @@ namespace Confuser.Runtime {
 			for (int i = 0; i < 0x10; i++) {
 				y[i] = v;
 				d[i] = x;
-				z = (x >> 5) | (x << 27);
-				x = (c >> 3) | (c << 29);
+				z = (x >> Mutation.KeyI6) | (x << (32 - Mutation.KeyI6));
+				x = (c >> Mutation.KeyI7) | (c << (32 - Mutation.KeyI7));
 
 				CheckRemoteDebuggerPresent(Process.GetCurrentProcess().Handle, ref isDebuggerPresent);
 				if (isDebuggerPresent) Environment.FailFast(null);
 
-				c = (v >> 7) | (v << 25);
-				v = (z >> 11) | (z << 21);
+				c = (v >> Mutation.KeyI8) | (v << (32 - Mutation.KeyI8));
+				v = (z >> Mutation.KeyI9) | (z << (32 - Mutation.KeyI9));
 			}
 			Mutation.Crypt(y, d);
 
@@ -80,7 +81,7 @@ namespace Confuser.Runtime {
 			uint h = 0;
 			for (uint i = 0; i < l; i++) {
 				*e ^= y[h & 0xf];
-				y[h & 0xf] = (y[h & 0xf] ^ (*e++)) + 0x3dbb2819;
+				y[h & 0xf] = (y[h & 0xf] ^ (*e++)) + fb;
 
 				CheckRemoteDebuggerPresent(Process.GetCurrentProcess().Handle, ref isDebuggerPresent);
 				if (isDebuggerPresent) Environment.FailFast(null);

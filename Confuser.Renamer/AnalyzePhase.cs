@@ -76,6 +76,7 @@ namespace Confuser.Renamer {
 			bool caliburn = false;
 			bool winforms = false;
 			bool json = false;
+			bool systemTextJson = false;
 			bool visualBasic = false;
 			bool vsComposition = false;
 
@@ -93,6 +94,9 @@ namespace Confuser.Renamer {
 					}
 					else if (asmRef.Name == "Newtonsoft.Json") {
 						json = true;
+					}
+					else if (asmRef.Name == "System.Text.Json") {
+						systemTextJson = true;
 					}
 					else if (asmRef.Name == "Microsoft.VisualStudio.Composition") {
 						vsComposition = true;
@@ -125,6 +129,12 @@ namespace Confuser.Renamer {
 				var jsonAnalyzer = new JsonAnalyzer();
 				context.Logger.LogDebug("Newtonsoft.Json found, enabling compatibility.");
 				service.Renamers.Add(jsonAnalyzer);
+			}
+
+			if (systemTextJson) {
+				var systemTextJsonAnalyzer = new SystemTextJsonAnalyzer();
+				context.Logger.LogDebug("System.Text.Json found, enabling compatibility.");
+				service.Renamers.Add(systemTextJsonAnalyzer);
 			}
 
 			if (visualBasic) {
@@ -214,6 +224,12 @@ namespace Confuser.Renamer {
 		}
 
 		void Analyze(NameService service, ConfuserContext context, ProtectionParameters parameters, MethodDef method) {
+			// 匿名类型的构造参数名就是它的属性名,置空后 System.Text.Json 连构建类型信息都会抛
+			// ("parameters with null names")。判定放在这里(分析阶段)而不是 RenamePhase:那时类型
+			// 可能已经被改名,Name 里就不再含 "AnonymousType",判定会随重命名顺序时灵时不灵。
+			if (method.IsConstructor && method.DeclaringType.Name.String.Contains("AnonymousType"))
+				service.SetParam(method, "renameArgs", "false");
+
 			if (IsVisibleOutside(context, parameters, method.DeclaringType) &&
 				(method.IsFamily || method.IsFamilyOrAssembly || method.IsPublic) &&
 				IsVisibleOutside(context, parameters, method))
@@ -272,6 +288,11 @@ namespace Confuser.Renamer {
 
 			else if (parameters.GetParameter(context, property, "forceRen", false))
 				return;
+
+			// renProperties=false 保留属性名。按成员名匹配、又没有特性把名字钉死的序列化器
+			//(如不带 [JsonPropertyName] 的 System.Text.Json)一旦属性被改名,就会静默读写默认值。
+			else if (!parameters.GetParameter(context, property, "renProperties", true))
+				service.SetCanRename(property, false);
 
 			else if (property.DeclaringType.Implements("System.ComponentModel.INotifyPropertyChanged"))
 				service.SetCanRename(property, false);

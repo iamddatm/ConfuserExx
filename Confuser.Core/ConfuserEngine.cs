@@ -90,10 +90,9 @@ namespace Confuser.Core {
 
 			bool ok = false;
 			try {
-				// Enable watermarking by default
-				context.Project.Rules.Insert(0, new Rule {
-					new SettingItem<Protection>(WatermarkingProtection._Id)
-				});
+				// Watermarking is opt-in (issue #69): the "watermark" protection is no longer
+				// force-enabled, so obfuscated output carries no ConfuserEx fingerprint attribute
+				// unless a project explicitly requests it via <protection id="watermark" />.
 
 				var asmResolver = new ConfuserAssemblyResolver { EnableTypeDefCache = true };
 				asmResolver.DefaultModuleContext = new ModuleContext(asmResolver);
@@ -462,6 +461,49 @@ namespace Confuser.Core {
 					Directory.CreateDirectory(dir);
 				context.Logger.LogDebug("Saving to '{0}'...", path);
 				File.WriteAllBytes(path, context.OutputModules[i]);
+			}
+
+			if (context.Project.CopyRuntimeFiles)
+				CopyRuntimeFiles(context);
+		}
+
+		static void CopyRuntimeFiles(ConfuserContext context) {
+			for (int i = 0; i < context.OutputModules.Count; i++) {
+				string sourcePath = context.Modules[i].Location;
+				if (string.IsNullOrEmpty(sourcePath))
+					continue;
+				if (!Path.IsPathRooted(sourcePath))
+					sourcePath = Path.Combine(context.BaseDirectory, sourcePath);
+
+				string sourceDir = Path.GetDirectoryName(sourcePath);
+				string baseName = Path.GetFileNameWithoutExtension(sourcePath);
+				if (sourceDir is null || string.IsNullOrEmpty(baseName))
+					continue;
+
+				// A .runtimeconfig.json sibling marks a .NET (Core) app, whose native launcher
+				// (apphost .exe) and dependency manifest live beside the module. .NET Framework
+				// assemblies have none, so the loop below simply finds nothing to copy.
+				string runtimeConfig = baseName + ".runtimeconfig.json";
+				if (!File.Exists(Path.Combine(sourceDir, runtimeConfig)))
+					continue;
+
+				string outputDir = Path.GetDirectoryName(
+					Path.GetFullPath(Path.Combine(context.OutputDirectory, context.OutputPaths[i])));
+				if (outputDir is null)
+					continue;
+
+				foreach (string supportFile in new[] { runtimeConfig, baseName + ".deps.json", baseName + ".exe" }) {
+					string from = Path.Combine(sourceDir, supportFile);
+					if (!File.Exists(from))
+						continue;
+					string to = Path.Combine(outputDir, supportFile);
+					if (string.Equals(Path.GetFullPath(from), Path.GetFullPath(to), StringComparison.OrdinalIgnoreCase))
+						continue;
+					if (!Directory.Exists(outputDir))
+						Directory.CreateDirectory(outputDir);
+					context.Logger.LogDebug("Copying runtime support file '{0}'...", supportFile);
+					File.Copy(from, to, true);
+				}
 			}
 		}
 

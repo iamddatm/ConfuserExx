@@ -12,9 +12,9 @@ namespace Confuser.Runtime {
 			var k = new uint[0x10];
 			ulong s = seed;
 			for (int i = 0; i < 0x10; i++) {
-				s = (s * s) % 0x143fc089;
+				s = (s * s) % (uint)Mutation.KeyI1;
 				k[i] = (uint)s;
-				w[i] = (uint)((s * s) % 0x444d56fb);
+				w[i] = (uint)((s * s) % (uint)Mutation.KeyI2);
 			}
 			Mutation.Crypt(w, k);
 			Array.Clear(k, 0, 0x10);
@@ -23,7 +23,7 @@ namespace Confuser.Runtime {
 			uint h = 0;
 			for (int i = 0; i < data.Length; i++) {
 				uint d = data[i] ^ w[i & 0xf];
-				w[i & 0xf] = (w[i & 0xf] ^ d) + 0x3ddb2819;
+				w[i & 0xf] = (w[i & 0xf] ^ d) + (uint)Mutation.KeyI0;
 				b[h + 0] = (byte)(d >> 0);
 				b[h + 1] = (byte)(d >> 8);
 				b[h + 2] = (byte)(d >> 16);
@@ -34,11 +34,11 @@ namespace Confuser.Runtime {
 			byte[] j = Lzma.Decompress(b);
 			Array.Clear(b, 0, b.Length);
 
-			var z = (uint)(s % 0x8a5cb7);
+			var z = (uint)(s % (uint)Mutation.KeyI3);
 			for (int i = 0; i < j.Length; i++) {
 				j[i] ^= (byte)s;
 				if ((i & 0xff) == 0)
-					s = (s * s) % 0x8a5cb7;
+					s = (s * s) % (uint)Mutation.KeyI3;
 			}
 			return j;
 		}
@@ -86,9 +86,9 @@ namespace Confuser.Runtime {
 					Buffer.BlockCopy(t, 0, d, o, r);
 					o += r;
 				}
-				uint s = 0x6fff61;
+				uint s = (uint)Mutation.KeyI0;
 				foreach (byte c in b)
-					s = s * 0x5e3f1f + c;
+					s = s * (uint)Mutation.KeyI1 + c;
 				byte[] f = Decrypt(d, s);
 				Assembly a = Assembly.Load(f);
 				Array.Clear(f, 0, f.Length);

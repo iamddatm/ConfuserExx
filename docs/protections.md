@@ -84,12 +84,12 @@ Encrypts method bodies at build time and decrypts them at runtime via a JIT hook
 
 | Name | Values | Default | Description |
 |------|--------|---------|-------------|
-| `mode` | `jit`, `native` | `jit` | `jit` hooks the JIT compiler to decrypt methods on demand. `native` pre-compiles methods to native code. |
+| `mode` | `normal`, `anti` | `normal` | Tamper-detection method. `normal` decrypts the protected section at load. `anti` additionally runs anti-debugger checks. |
 | `key` | `normal`, `dynamic` | `normal` | Key derivation mode. `dynamic` derives the key from the assembly contents for stronger tamper detection. |
 
 ```xml
 <protection id="anti tamper">
-  <argument name="mode" value="jit" />
+  <argument name="mode" value="anti" />
   <argument name="key" value="dynamic" />
 </protection>
 ```
@@ -213,12 +213,26 @@ Renames types, methods, fields, properties, and events to meaningless identifier
 | `forceRen` | `true`, `false` | `false` | Rename even when the Reflection API is used. |
 | `renXaml` | `true`, `false` | `true` | Rename XAML/BAML references (WPF support). |
 | `renEnum` | `true`, `false` | `false` | Rename enum members. |
+| `renPublic` | `true`, `false` | — | Rename public members of types visible outside the assembly. Unset means types of an application are renamed freely. |
+| `renProperties` | `true`, `false` | `true` | Rename properties. Set to `false` when a serializer matches members by name without an attribute to pin it — System.Text.Json without `[JsonPropertyName]`, for example. |
+| `renameArgs` | `true`, `false` | `true` | Blank the parameter names of methods and constructors. Set to `false` when a serializer binds constructor parameters by name (positional records with System.Text.Json). |
 | `password` | string | — | Password for `reversible` mode decoding. |
 
 Serialization attributes that are automatically respected:
 - `[DataContract]` / `[DataMember]`
 - `[JsonProperty]` (Newtonsoft.Json)
 - `[Serializable]`
+
+`System.Text.Json` serializes members by name but offers no attribute-free way to discover that a
+type is serialized, so it is not detected automatically. Obfuscate such assemblies with
+`renProperties=false` (and `renameArgs=false` for records with constructor parameters):
+
+```xml
+<protection id="rename">
+  <argument name="renProperties" value="false" />
+  <argument name="renameArgs" value="false" />
+</protection>
+```
 
 ```xml
 <protection id="rename">
@@ -277,6 +291,31 @@ Compresses the entire output assembly and wraps it in a native stub that decompr
 </packer>
 ```
 
+---
+
+### Watermark
+
+**ID:** `watermark`
+
+Adds a small custom attribute to the assembly marking that it was protected. It is **opt-in** —
+obfuscated output carries no watermark unless this protection is explicitly enabled, so the
+default output has no identifiable ConfuserEx fingerprint.
+
+**Options:**
+
+| Name | Values | Default | Description |
+|------|--------|---------|-------------|
+| `text` | any string | ConfuserEx version | The value stored in the watermark attribute. |
+| `attributeName` | any identifier | `ConfusedByAttribute` | The name of the injected attribute type. |
+
+```xml
+<!-- Branded watermark -->
+<protection id="watermark">
+  <argument name="text" value="MyCompany Security" />
+  <argument name="attributeName" value="SecurityStampAttribute" />
+</protection>
+```
+
 ## Combining Protections
 
 Protections stack. You can start from a preset and add/remove individual protections:
@@ -284,13 +323,13 @@ Protections stack. You can start from a preset and add/remove individual protect
 ```xml
 <rule preset="normal" pattern="true">
   <protection id="anti tamper">
-    <argument name="mode" value="jit" />
+    <argument name="mode" value="anti" />
   </protection>
   <protection id="rename" action="remove" />
 </rule>
 ```
 
-This applies the `normal` preset, adds anti-tamper with JIT mode, and removes renaming.
+This applies the `normal` preset, adds anti-tamper in `anti` mode, and removes renaming.
 
 ## Pattern Expressions
 
