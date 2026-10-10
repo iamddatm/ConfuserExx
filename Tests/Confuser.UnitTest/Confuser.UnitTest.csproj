@@ -4,6 +4,10 @@
 
   <PropertyGroup Label="Assembly Settings">
     <TargetFrameworks>net462;net10.0</TargetFrameworks>
+    <!-- The ConfuserEx.Common.props import above resolves to Tests/ConfuserEx.Common.props, which
+         does not exist, so its LangVersion=latest silently no-ops. Without this the net462 leg
+         falls back to the SDK default C# 7.3 and rejects the C# 8 syntax used in TestBase. -->
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <!-- Shared test-support library (TestBase, XunitLogger) — NOT a runnable test
