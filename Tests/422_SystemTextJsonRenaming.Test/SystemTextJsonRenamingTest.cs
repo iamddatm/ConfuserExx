@@ -47,6 +47,9 @@ namespace SystemTextJsonRenaming.Test {
 						"{\"OrderNumber\":\"SN-1\",\"Amount\":5}",
 						"SN-2/3",
 						"3/SN-3",
+						"chained",
+						"async-chained",
+						"{\"InstanceId\":\"anon\"}",
 						"END"
 					});
 					return Task.CompletedTask;
@@ -68,6 +71,9 @@ namespace SystemTextJsonRenaming.Test {
 						"{\"OrderNumber\":\"SN-1\",\"Amount\":5}",
 						"SN-2/3",
 						"3/SN-3",
+						"chained",
+						"async-chained",
+						"{\"InstanceId\":\"anon\"}",
 						"END"
 					});
 					return Task.CompletedTask;

@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace SystemTextJsonRenaming {
 	// System.Text.Json 按成员名匹配,而这些 DTO 没有 [JsonPropertyName] 把契约钉死,
@@ -19,8 +20,32 @@ namespace SystemTextJsonRenaming {
 		public T Data { get; set; }
 	}
 
+	// 只经"泛型帮助方法"链路才被序列化的类型:调用点上只有 DecodeEnvelope<DeepNested> 是具体类型,
+	// 真正的 JsonSerializer 调用藏在两层之外,泛型实参在那里只是形参 T。
+	public class DeepNested {
+		public string OnlyViaGenericChain { get; set; } = "";
+	}
+
+	// 只经 async 泛型帮助方法链路才被序列化的类型:C# 会把 async 方法体搬进编译器生成的状态机,
+// 泛型形参随之变成状态机的类型形参,分析器得靠 [AsyncStateMachine] 把 MoveNext 归还原方法。
+	public class AsyncNested {
+		public string OnlyViaAsyncChain { get; set; } = "";
+	}
+
 	class Program {
-		static Envelope<T> DecodeEnvelope<T>(string json) => JsonSerializer.Deserialize<Envelope<T>>(json);
+		static Envelope<T> ReadPayload<T>(string json) => JsonSerializer.Deserialize<Envelope<T>>(json);
+		static Envelope<T> DecodeEnvelope<T>(string json) => ReadPayload<T>(json);
+
+		static async Task<Envelope<T>> ReadPayloadAsync<T>(string json) {
+			await Task.Yield();
+			return JsonSerializer.Deserialize<Envelope<T>>(json);
+		}
+
+		static async Task<T> DecodeAsync<T>(string json) => (await ReadPayloadAsync<T>(json)).Data;
+
+		// 匿名类型的构造参数名就是它的属性名:一旦被置空,STJ 连构建类型信息都会抛
+		// ("parameters with null names"),请求体因此发不出去。
+		static string SerializeAnonymous(string instanceId) => JsonSerializer.Serialize(new { InstanceId = instanceId });
 
 		static int Main(string[] args) {
 			Console.WriteLine("START");
@@ -31,6 +56,11 @@ namespace SystemTextJsonRenaming {
 				Console.WriteLine(ticket.OrderNumber + "/" + ticket.Amount);
 				var envelope = DecodeEnvelope<Ticket>("{\"Code\":3,\"Data\":{\"OrderNumber\":\"SN-3\",\"Amount\":2}}");
 				Console.WriteLine(envelope.Code + "/" + envelope.Data.OrderNumber);
+				var deep = DecodeEnvelope<DeepNested>("{\"Code\":4,\"Data\":{\"OnlyViaGenericChain\":\"chained\"}}");
+				Console.WriteLine(deep.Data.OnlyViaGenericChain);
+				var asyncDeep = DecodeAsync<AsyncNested>("{\"Code\":5,\"Data\":{\"OnlyViaAsyncChain\":\"async-chained\"}}").GetAwaiter().GetResult();
+				Console.WriteLine(asyncDeep.OnlyViaAsyncChain);
+				Console.WriteLine(SerializeAnonymous("anon"));
 			}
 			Console.WriteLine("END");
 			return 42;
