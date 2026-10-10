@@ -51,3 +51,6 @@ coverage/
 
 # Local todo intake/tracker (not shared)
 docs/todo/
+
+# CodeGraph index (generated locally, machine-specific)
+.codegraph/
