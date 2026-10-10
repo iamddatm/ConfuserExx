@@ -41,14 +41,11 @@ namespace Confuser.Renamer {
 				var mode = service.GetRenameMode(def);
 
 				if (def is MethodDef method) {
+					// 匿名类型的豁免已在 AnalyzePhase 里按原名判定并置 renameArgs=false(那里才不受
+					// 重命名顺序影响),这里只按参数执行即可。
 					if ((canRename || method.IsConstructor) && parameters.GetParameter(context, method, "renameArgs", true)) {
-						if (method.IsConstructor && method.DeclaringType.Name.String.Contains("AnonymousType")) {
-							// Anonymous type constructor args map to property names — renaming breaks JSON serialization
-						}
-						else {
-							foreach (var param in method.ParamDefs)
-								param.Name = null;
-						}
+						foreach (var param in method.ParamDefs)
+							param.Name = null;
 					}
 
 					if (parameters.GetParameter(context, method, "renPdb", false) && method.HasBody) {

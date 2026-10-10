@@ -224,6 +224,12 @@ namespace Confuser.Renamer {
 		}
 
 		void Analyze(NameService service, ConfuserContext context, ProtectionParameters parameters, MethodDef method) {
+			// 匿名类型的构造参数名就是它的属性名,置空后 System.Text.Json 连构建类型信息都会抛
+			// ("parameters with null names")。判定放在这里(分析阶段)而不是 RenamePhase:那时类型
+			// 可能已经被改名,Name 里就不再含 "AnonymousType",判定会随重命名顺序时灵时不灵。
+			if (method.IsConstructor && method.DeclaringType.Name.String.Contains("AnonymousType"))
+				service.SetParam(method, "renameArgs", "false");
+
 			if (IsVisibleOutside(context, parameters, method.DeclaringType) &&
 				(method.IsFamily || method.IsFamilyOrAssembly || method.IsPublic) &&
 				IsVisibleOutside(context, parameters, method))
