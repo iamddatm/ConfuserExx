@@ -7,21 +7,91 @@ namespace Confuser.Runtime {
 		[DllImport("kernel32.dll")]
 		static extern unsafe bool VirtualProtect(byte* lpAddress, int dwSize, uint flNewProtect, out uint lpflOldProtect);
 
+		[StructLayout(LayoutKind.Sequential)]
+		struct MemoryBasicInformation {
+			public IntPtr BaseAddress;
+			public IntPtr AllocationBase;
+			public uint AllocationProtect;
+			public IntPtr RegionSize;
+			public uint State;
+			public uint Protect;
+			public uint Type;
+		}
+
+		[DllImport("kernel32.dll")]
+		static extern IntPtr VirtualQuery(IntPtr lpAddress, out MemoryBasicInformation lpBuffer, IntPtr dwLength);
+
+		/// <summary>
+		///     判断 [address, address + size) 是否落在已提交且可读的内存中。
+		///     单文件发布下 <c>Marshal.GetHINSTANCE</c> 可能返回 -1（该程序集没有独立的 HINSTANCE），
+		///     按未知地址解引用会直接 ACCESS_VIOLATION，所以取值前必须先过这里。
+		/// </summary>
+		/// <param name="address">待检查的内存地址。</param>
+		/// <param name="size">从该地址起需要可读的字节数。</param>
+		/// <returns>该区间是否可安全读取。</returns>
+		static unsafe bool Readable(byte* address, int size) {
+			MemoryBasicInformation info;
+			if (VirtualQuery((IntPtr)address, out info, (IntPtr)Marshal.SizeOf(typeof(MemoryBasicInformation))) == IntPtr.Zero)
+				return false;
+			if (info.State != 0x1000) //MEM_COMMIT
+				return false;
+			if ((info.Protect & 0x01) != 0 || (info.Protect & 0x100) != 0) //PAGE_NOACCESS / PAGE_GUARD
+				return false;
+			return (long)address + size <= (long)info.BaseAddress + info.RegionSize.ToInt64();
+		}
+
+		/// <summary>
+		///     判断当前模块在内存里是按节虚拟地址布局的真映像（<c>true</c>），还是按文件布局的扁平副本（<c>false</c>）。
+		/// </summary>
+		/// <remarks>
+		///     不能用 <c>Module.FullyQualifiedName[0] == '&lt;'</c> 判：单文件 bundle 加载的程序集恒为
+		///     <c>"&lt;Unknown&gt;"</c>，但它们的实际布局并不相同——CoreCLR 对 bundle 内程序集只做只读文件映射，
+		///     <b>只有当映像里存在可写节时</b>才会把它转成真正的内存映像（节在 VirtualAddress、内存私有可写）。
+		///     anti tamper 的密文节与 anti dump 自己插入的可写节都会命中这条规则，所以必须按"有无可写节"判，
+		///     否则会把真映像当成扁平副本、按文件偏移去寻址。
+		/// </remarks>
+		/// <param name="module">当前模块，仅用于无文件路径时的兜底判断。</param>
+		/// <param name="sectionTable">节表首地址。</param>
+		/// <param name="sectionCount">节的数量。</param>
+		/// <returns>是否为真映像。</returns>
+		static unsafe bool IsMappedImage(Module module, byte* sectionTable, int sectionCount) {
+			for (int i = 0; i < sectionCount; i++) {
+				if ((*(uint*)(sectionTable + i * 0x28 + 0x24) & 0x80000000) != 0) //IMAGE_SCN_MEM_WRITE
+					return true;
+			}
+
+			// 兜底：能从磁盘路径加载的程序集（非单文件）一定是真映像。
+			string name = module.FullyQualifiedName;
+			return name.Length > 0 && name[0] != '<';
+		}
+
 		static unsafe void Initialize() {
 			uint old;
 			Module module = typeof(AntiDump).Module;
 			var bas = (byte*)Marshal.GetHINSTANCE(module);
+			if (bas == (byte*)(-1) || bas == null)
+				return;
+			if (!Readable(bas, 0x40))
+				return;
+
 			byte* ptr = bas + 0x3c;
-			byte* ptr2;
-			ptr = ptr2 = bas + *(uint*)ptr;
+			ptr = bas + *(uint*)ptr;
 			ptr += 0x6;
 			ushort sectNum = *(ushort*)ptr;
 			ptr += 14;
 			ushort optSize = *(ushort*)ptr;
-			ptr = ptr2 = ptr + 0x4 + optSize;
+			ptr = ptr + 0x4 + optSize; //节表起点
+			if (!Readable(bas, (int)(ptr - bas) + sectNum * 0x28))
+				return;
+
+			// 单文件 bundle 里不带可写节的产物是只读的文件映射，VirtualProtect 必然失败，
+			// 而下面的擦除不检查返回值、直接写只读页 —— 那就是单文件下的 ACCESS_VIOLATION。
+			// 先用 PE 头页探一次可写性，探不到就整体放弃（这一层保护失效，但不让进程崩）。
+			if (!VirtualProtect(bas, 0x1000, 0x40, out old))
+				return;
 
 			byte* @new = stackalloc byte[11];
-			if (module.FullyQualifiedName[0] != '<') //Mapped
+			if (IsMappedImage(module, ptr, sectNum)) //Mapped
 			{
 				//VirtualProtect(ptr - 16, 8, 0x40, out old);
 				//*(uint*)(ptr - 12) = 0;

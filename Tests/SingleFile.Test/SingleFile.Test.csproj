@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <_SingleFileSampleProject>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '..', 'SingleFile', 'SingleFile.csproj'))</_SingleFileSampleProject>
+    <_ConfuserCliPath>$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)', '..', '..', 'Confuser.CLI', 'bin', '$(Configuration)', 'net10.0', 'Confuser.CLI.exe'))</_ConfuserCliPath>
+  </PropertyGroup>
+
+  <!-- 用例要驱动 dotnet publish，先保证 CLI 已在同一配置下构建出来 -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\Confuser.CLI\Confuser.CLI.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- 把样本工程与 CLI 的绝对路径带给测试（与输出目录无关） -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>SingleFileSampleProject</_Parameter1>
+      <_Parameter2>$(_SingleFileSampleProject)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>ConfuserCliPath</_Parameter1>
+      <_Parameter2>$(_ConfuserCliPath)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildConfiguration</_Parameter1>
+      <_Parameter2>$(Configuration)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

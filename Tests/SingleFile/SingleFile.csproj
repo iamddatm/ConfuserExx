@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>SingleFileSample</AssemblyName>
+    <ConfuserProjectPath Condition="'$(ConfuserProjectPath)' == ''">$(MSBuildProjectDirectory)/singlefile.crproj</ConfuserProjectPath>
+  </PropertyGroup>
+
+  <!-- 由 Tests/SingleFile.Test 驱动：在单文件打包之前用 ConfuserExx 替换待打包的 dll
+       （_ComputeFilesToBundle 在 ResolvedFileToPublish 算完之后、单文件打包与拷贝之前）。
+       与 PddBuddy.csproj 的 ObfuscatePddBuddy 目标同构：输入取 $(TargetPath)，产物写到 obj 下
+       独立目录，再重定向 ResolvedFileToPublish 里的那一项，绝不回写 bin/obj 里的程序集。 -->
+  <Target Name="ObfuscateSingleFileSample" BeforeTargets="_ComputeFilesToBundle" Condition="'$(Obfuscate)' == 'true'">
+    <PropertyGroup>
+      <_ObfOut>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'obfuscated'))</_ObfOut>
+      <_ObfDll>$([MSBuild]::NormalizePath('$(_ObfOut)', '$(AssemblyName).dll'))</_ObfDll>
+    </PropertyGroup>
+    <MakeDir Directories="$(_ObfOut)" />
+    <Exec Command="&quot;$(ConfuserCliPath)&quot; &quot;$(TargetPath)&quot; &quot;$(ConfuserProjectPath)&quot; -o &quot;$(_ObfOut)&quot; -n" />
+    <ItemGroup>
+      <_ObfAppItem Include="@(ResolvedFileToPublish)" Condition="'%(Filename)' == '$(AssemblyName)' And '%(Extension)' == '.dll'" />
+      <ResolvedFileToPublish Remove="@(_ObfAppItem)" />
+      <ResolvedFileToPublish Include="$(_ObfDll)">
+        <RelativePath>%(_ObfAppItem.RelativePath)</RelativePath>
+        <CopyToPublishDirectory>%(_ObfAppItem.CopyToPublishDirectory)</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+    <PropertyGroup>
+      <ObfuscationDone>true</ObfuscationDone>
+    </PropertyGroup>
+  </Target>
+
+  <!-- 钩子失配时让 publish 显式失败，避免静默产出未混淆的样本（同 PddBuddy 的哨兵） -->
+  <Target Name="EnsureObfuscatedOnPublish" AfterTargets="Publish" Condition="'$(Obfuscate)' == 'true'">
+    <Error Condition="'$(ObfuscationDone)' != 'true'"
+           Text="Obfuscate=true 但混淆目标 ObfuscateSingleFileSample 未执行（_ComputeFilesToBundle 钩子失配？）。" />
+  </Target>
+
+</Project>

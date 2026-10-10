@@ -14,12 +14,33 @@ namespace Confuser.Runtime {
 
 		static unsafe void Initialize() {
 			Module m = typeof(AntiTamperAnti).Module;
-			string n = m.FullyQualifiedName;
-			bool f = n.Length > 0 && n[0] == '<';
 			var b = (byte*)Marshal.GetHINSTANCE(m);
+			if (b == (byte*)(-1) || b == null)
+				return;
 			byte* p = b + *(uint*)(b + 0x3c);
 			ushort s = *(ushort*)(p + 0x6);
 			ushort o = *(ushort*)(p + 0x14);
+
+			// 判断映像是按节虚拟地址布局的真映像，还是按文件布局的扁平副本。
+			// 不能用 Module.FullyQualifiedName[0] 判：单文件 bundle 加载的程序集恒为 "<Unknown>"，
+			// 但本保护自己插入的密文节带 IMAGE_SCN_MEM_WRITE，CoreCLR 会把这种程序集转成真正的
+			// 内存映像（节在 VirtualAddress、内存私有可写）；只有不带可写节的产物才是只读的扁平
+			// 文件映射（节在 PointerToRawData）。把真映像误判成扁平副本会让解密写到错的地址。
+			// 注意：判定必须内联在本方法里，不能拆成同类型的独立方法 —— 实测在"单文件 + anti dump"
+			// 组合下，多出的那个方法会在解密完成前被 JIT，抛 BadImageFormatException。
+			var sec = (uint*)(p + 0x18 + o);
+			bool mapped = false;
+			for (int i = 0; i < s; i++) {
+				if ((sec[i * 0xa + 9] & 0x80000000) != 0) { //IMAGE_SCN_MEM_WRITE
+					mapped = true;
+					break;
+				}
+			}
+			if (!mapped) {
+				string name = m.FullyQualifiedName;
+				mapped = name.Length > 0 && name[0] != '<';
+			}
+			bool f = !mapped;
 
 			bool isDebuggerPresent = false;
 
@@ -72,11 +93,12 @@ namespace Confuser.Runtime {
 			}
 			Mutation.Crypt(y, d);
 
-			uint w = 0x40;
-			VirtualProtect((IntPtr)e, l << 2, w, out w);
+			uint w;
+			if (!VirtualProtect((IntPtr)e, l << 2, 0x40, out w))
+				return; //拿不到写权限（例如单文件下只读的文件映射视图）→ 放弃，写只读页会崩
 
 			if (w == 0x40)
-				return;
+				return; //本来就可写可执行，说明密文节此前已解密过，重复解密会把方法体弄坏
 
 			uint h = 0;
 			for (uint i = 0; i < l; i++) {

@@ -54,6 +54,8 @@ Prevents memory dump tools from extracting the assembly image from a running pro
 
 No configurable options.
 
+For single-file output (`PublishSingleFile=true`) the protection also adds one small writable section to the assembly. The CLR normally loads a bundled assembly as a read-only memory mapping of the bundle, which cannot be patched in place; the presence of a writable section makes it load a writable private image instead. If the image still turns out to be read-only, the erasure is skipped rather than crashing the process.
+
 ```xml
 <protection id="anti dump" />
 ```
@@ -78,7 +80,9 @@ No configurable options.
 
 **ID:** `anti tamper`
 
-Encrypts method bodies at build time and decrypts them at runtime via a JIT hook. If the assembly is modified after build, decryption fails and the application crashes — providing tamper resistance.
+Moves the protected method bodies into a new section of the assembly and encrypts them at build time; the injected module initializer decrypts that section in memory at load time. If the assembly is modified after build, decryption fails and the application crashes — providing tamper resistance.
+
+Works with single-file output (`PublishSingleFile=true`): the encrypted section is itself a writable section, which makes the CLR load the bundled assembly as a writable private image instead of a read-only memory mapping of the bundle.
 
 **Options:**
 

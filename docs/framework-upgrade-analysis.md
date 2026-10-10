@@ -53,7 +53,8 @@ SDK 由 `global.json` 钉住(`10.0.201` + `rollForward: latestMinor` + `allowPre
 |---|---|---|
 | `IsClr40` | 元数据 `RuntimeVersion` 以 `v4` 开头 | **唯一的框架旗标**;现代 .NET 全部命中 v4 分支,却仍按 mscorlib 4.0 语义解析 |
 | `.runtimeconfig.json` 存在性 | `Confuser.Core/ConfuserEngine.cs:483-488` | 区分现代 .NET 与 .NET Framework 的唯一运行时标志 |
-| `FullyQualifiedName[0] == '<'` | `AntiTamper.Normal.cs:13`、`AntiDump.cs:24,108`、`RuntimeService.cs:24` | 区分 Mapped / Flat(单文件、`Assembly.Load(byte[])`、内存加载) |
+| "有无可写节" + `FullyQualifiedName[0] == '<'` | `AntiTamper.Normal.cs:26-35`、`AntiTamper.Anti.cs:31-40`、`AntiDump.cs:57-66` | 区分 Mapped / Flat(内存映像是按节虚拟地址布局,还是按文件布局);旧版只看 `FullyQualifiedName`,在单文件下会误判(见 §3.2) |
+| `FullyQualifiedName[0] == '<'` | `Confuser.Core/Services/RuntimeService.cs:24` | 仅用于定位 `Confuser.Runtime.dll`(混淆器自身),与目标程序集的布局无关 |
 | 注册表 `NDP` 枚举 | `ConfuserEngine.cs:531-579` | 仅 Windows 且仅 .NET Framework;硬编码 `"v4.5 "` 标签(:577) |
 | `TargetFrameworkAttribute` | `Diagnostics/DiagnosticReport.cs:205-231` | 仅用于诊断报告输出,未参与决策 |
 
@@ -80,7 +81,7 @@ SDK 由 `global.json` 钉住(`10.0.201` + `rollForward: latestMinor` + `allowPre
 |---|---|
 | 程序集解析 | 新增 `.runtimeconfig.json` 探测 + `dotnet/shared/**` 全量探测,以解决"net10 应用引用 net8 库"这类跨版本依赖 |
 | netstandard 门面 | 门面扁平化:把转发类型搬进 netstandard,使模块只引用 netstandard |
-| 单文件 / 内存加载 | 靠 `FullyQualifiedName[0] == '<'` 走 Flat 偏移分支 |
+| 单文件 / 内存加载 | 运行时要区分"真映像(节在 VirtualAddress,可写私有内存)"与"扁平副本(节在 PointerToRawData,只读文件映射)"。判据是**映像里有没有可写节**——CoreCLR 对 bundle 内程序集只做只读文件映射,只有当映像含可写节时才转成真正的可写映像;仅靠 `FullyQualifiedName[0] == '<'` 会把带可写节的真映像误判成扁平副本。2026-10-10 逐项实测(见 §5.3 #3) |
 
 ### 3.3 .NET 6 / .NET 8
 
@@ -177,7 +178,7 @@ SDK 由 `global.json` 钉住(`10.0.201` + `rollForward: latestMinor` + `allowPre
 |---|---|---|---|
 | 1 | **Runtime Async** | .NET 11 起 async 方法**不再生成状态机**,改由运行时挂起/恢复,IL 里是 `AsyncHelpers.Await(...)`;RC1 起运行时库自身也以 runtime-async 编译。而 `SystemTextJsonAnalyzer` 靠 `[AsyncStateMachine]` 把状态机方法归还原方法(`SystemTextJsonAnalyzer.cs:126-147`)——对 runtime-async 编译的用户程序集,这条链会**空转漏保**,序列化契约可能被改坏;Renamer 里其余状态机假设同样要复核 | 先确认 runtime-async 方法在元数据上的标记方式;分析器按新标记识别或退化为"方法本体可见的调用"分析;补 runtime-async 回归测试 |
 | 2 | **C# 15 union types + STJ 的 union / 闭合类型多态** | .NET 11 的 STJ 新增 union 与闭合类型多态支持;新类型形态进入序列化契约 | 扩 `AnalyzePhase` / STJ 分析器的类型识别,确保 union 成员名被保留 |
-| 3 | **AntiTamper 与 R2R / 单文件 / AOT** | 官方继续投入 NativeAOT 并**更新了最低硬件要求**;AntiTamper 是 PE 节表 + kernel32 方案,对 R2R/AOT/单文件无任何处理 | 至少在文档写明"与 R2R/AOT 互斥";核对混淆产物在最低硬件 / ARM64 上的行为 |
+| 3 | **AntiTamper/AntiDump 与 R2R / 单文件 / AOT** | 官方继续投入 NativeAOT 并**更新了最低硬件要求**;两项都是 PE 节表 + kernel32 方案。**单文件已实测并修好**(2026-10-10):anti dump 单独用会在构建期补一个可写节(让它走 CoreCLR 的可写私有映像),两桩的布局判据也由 `FullyQualifiedName` 改为"有无可写节";R2R / AOT 仍不适用 | 至少在文档写明"与 R2R/AOT 互斥";核对混淆产物在最低硬件 / ARM64 上的行为 |
 | 4 | **Compress 默认 `compat=false`** | 老 netmodule 路径在 CoreCLR 上不成立,net11 不会变好 | 把现代 .NET 的默认改为 `compat=true`(改动小、收益明确,建议现在做) |
 | 5 | **dnlib 4.5.0 能否读 net11 元数据** | 若 C# 15 引入新元数据/标记(union、extension members 一类新形态),需新版 dnlib 正确解析 | 用 net11 RC1 编译样本跑通读/写链路;必要时升 dnlib |
 | 6 | **WPF on .NET 11** | `KnownThingsv4.cs:45-53` 硬编码 `PresentationFramework 4.0.0.0` / `mscorlib 4.0.0.0`,`ResolveThrow` 按名字+版本精确解析 | 核对 net11-windows 的 WPF 程序集解析是否命中 |
@@ -223,7 +224,12 @@ SDK 由 `global.json` 钉住(`10.0.201` + `rollForward: latestMinor` + `allowPre
 1. **Runtime Async 方法的元数据标记方式**(§5.3 #1)——决定 STJ 分析器的改造方案,最优先。
 2. **C# 14 extension members 的 `<Extension>$` 类型对改名的影响**(§5.3 #8)。
 3. **dnlib 4.5.0 对 net11 程序集的读写**(§5.3 #5)。
-4. **AntiTamper 在 net11 + ReadyToRun / 单文件下的实际失败形态**——目前是静态推断"会崩",未实测。
+4. **~~AntiTamper 在单文件下的实际失败形态~~**——已实测并修复(2026-10-10,net10 / win-x64):
+   - `Marshal.GetHINSTANCE` 在单文件下**不返回 -1**(官方文档说返回 -1,与实际不符),返回的是该 layout 的基址;
+   - IL-only 产物在 bundle 里是**只读文件映射**(`MEM_MAPPED`+`PAGE_READONLY`,`VirtualProtect` 升可写返回 ERROR_INVALID_PARAMETER 87)→ anti dump 擦 PE 头时写只读页,`0xC0000005`;
+   - 带可写节的产物(anti tamper 的密文节)会被 CoreCLR 转成**可写的私有映像**(`MEM_PRIVATE`,节在 VirtualAddress)→ 但旧判据 `FullyQualifiedName[0] == '<'` 仍按文件偏移寻址,解密写到错位置 → 方法体保持密文,`0xE0434352`;
+   - 现在由 `Tests/SingleFile.Test` 端到端锁住(混淆 → `dotnet publish -p:PublishSingleFile=true` → 执行)。
+   - 仍未实测:R2R / NativeAOT 组合;ARM64。
 5. **`compat=true` 作为现代 .NET 默认值**是否与既有测试(CompressorWithResx、IncorrectRedirectToGac)全部相容,需跑一遍。
 6. §4.2 的检查点目前依赖人工过一遍,建议逐步自动化(§5.4 阶段三)。
 
